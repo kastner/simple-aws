@@ -1,0 +1,113 @@
+#!/usr/bin/php
+<?
+
+require_once './_bootstrap.php';
+require_once 'Console/CommandLine.php';
+
+$parser = new Console_CommandLine();
+$parser->description = "A command-line interface to Amazon's Simple Queue Service.";
+$parser->version = '0.1.0';
+$parser->addOption('list_queues', array(
+    'long_name'   => '--list',
+    'description' => 'List all available queues in account.',
+    'action'      => 'StoreTrue'
+));
+$parser->addOption('add_queue', array(
+    'long_name'   => '--add',
+    'description' => 'Add a new queue.',
+    'action'      => 'StoreString',
+    'help_name'   => 'NAME'
+));
+$parser->addOption('delete_queue', array(
+    'long_name'   => '--delete',
+    'description' => 'Delete a queue.',
+    'action'      => 'StoreString',
+    'help_name'   => 'URL'
+));
+
+try {
+    $input = $parser->parse();
+} catch (Exception $exc) {
+    $parser->displayError($exc->getMessage());
+}
+
+
+// Handle request.
+if ($input->options['list_queues']) {
+	SQS::listQueues();
+
+} else if (!empty($input->options['add_queue'])) {
+	SQS::addQueue($input->options['add_queue']);
+
+} else if (!empty($input->options['delete_queue'])) {
+	SQS::deleteQueue($input->options['delete_queue']);
+
+} else {
+	echo $parser->displayUsage();
+}
+
+exit;
+
+
+/**
+ * Handles command-line requests and responds with output.
+ */
+class SQS {
+
+	public function listQueues()
+	{
+		$manager = new Services_Amazon_SQS_QueueManager();
+		$queues = $manager->listQueues();
+
+		if (count($queues) == 0) {
+			echo "No queues available.\n";
+			return;
+		}
+
+		$list = array();
+		foreach ($queues as $queue) {
+			$item = array();
+			$item['queue'] = $queue;
+
+			$attrs = $manager->getQueueAttributes($queue);
+			$item['message_count'] = $attrs['ApproximateNumberOfMessages'];
+			$item['visibility_timeout'] = $attrs['VisibilityTimeout'];
+
+			$list[] = $item;
+		}
+
+		$format = "%-55s  %-16s  %-12s\n";
+		printf($format, "QUEUE", "ITEMS (APPROX.)", "VIS. TIMEOUT");
+
+		foreach ($list as $item) {
+			printf($format, $item['queue'], $item['message_count'], $item['visibility_timeout']);
+		}
+	}
+
+	public function addQueue($name)
+	{
+		$manager = new Services_Amazon_SQS_QueueManager();
+		$result = $manager->createQueue($name);
+		if (!$result) {
+			echo "ERROR: " . $manager->getError() . "\n";
+		} else {
+			echo "New queue has been added.  It may take up to 60 seconds for it "
+				."to appear in your list of queues.\n";
+		}
+	}
+
+	public function deleteQueue($url)
+	{
+		$manager = new Services_Amazon_SQS_QueueManager();
+		$result = $manager->deleteQueue($url);
+		if (!$result) {
+			echo "ERROR: " . $manager->getError() . "\n";
+		} else {
+			echo "Queue has been deleted.  It may take up to 60 seconds for your "
+				."queue list to reflect this change.\n";
+		}
+	}
+
+}
+
+?>
